@@ -13,7 +13,7 @@ clip: https://github.com/openai/CLIP
 
 ## 1. Extract image feature
 
-modify the IMAGE_PATH in [config.py](config.py)
+modify the IMAGE_PATH in [config.py](config.py) and run
 
 ```
 python3 extract_images_features.py
