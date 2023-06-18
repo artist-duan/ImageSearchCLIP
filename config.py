@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
 
-IMAGE_PATH = "PATH_OF_YOUR_DATA"
+# IMAGE_PATH = "PATH_OF_YOUR_DATA"
+IMAGE_PATH = "/media/xrgaze/test2t/DUAN-HUAIWEI-MATE40PRO"
 IMAGE_FEATURE_PATH = "clip_feature"
 IMAGE_EXTENSIONS = {
     ".jpg",
