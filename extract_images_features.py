@@ -13,9 +13,9 @@ from models.clip_model import get_model
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--eval", action="store_true")
-    args = parser.parse_args()
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument("--eval", action="store_true")
+    # args = parser.parse_args()
 
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"

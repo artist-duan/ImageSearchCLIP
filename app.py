@@ -57,12 +57,21 @@ class Demo:
         scores = query_feature @ features.T
         return scores[0]
 
-    def search_nearest(self, query_feature, options={}):
+    def search_nearest(
+        self,
+        image_feature=None,
+        positive_feature=None,
+        negative_feature=None,
+        options={},
+        image_threshold=0.6,
+        text_threshold=0.2,
+    ):
         topk = options["topk"]
         minimum_height = options["minimum_height"]
         minimum_width = options["minimum_width"]
 
-        infos, features, scores = [], [], []
+        infos, features = [], []
+        image_scores, positive_scores, negative_scores = [], [], []
         for info in tqdm(self.datas, total=len(self.datas), desc="matching"):
             if isinstance(info, str):
                 with open(info, "rb") as fr:
@@ -95,30 +104,67 @@ class Demo:
             )
             if len(features) >= self.config.MAX_SPLIT_SIZE:
                 features = np.array(features, dtype=np.float32)
-                scores.append(self.cosine_similarity(query_feature, features))
+                if image_feature is not None:
+                    image_scores.append(self.cosine_similarity(image_feature, features))
+                if positive_feature is not None:
+                    positive_scores.append(
+                        self.cosine_similarity(positive_feature, features)
+                    )
+                if negative_feature is not None:
+                    negative_scores.append(
+                        self.cosine_similarity(negative_feature, features)
+                    )
                 features = []
 
         if len(features) > 0:
             features = np.array(features, dtype=np.float32)
-            scores.append(self.cosine_similarity(query_feature, features))
+            if image_feature is not None:
+                image_scores.append(self.cosine_similarity(image_feature, features))
+            if positive_feature is not None:
+                positive_scores.append(
+                    self.cosine_similarity(positive_feature, features)
+                )
+            if negative_feature is not None:
+                negative_scores.append(
+                    self.cosine_similarity(negative_feature, features)
+                )
 
-        if len(scores) == 0:
+        if len(image_scores):
+            image_scores = np.concatenate(image_scores, axis=0)
+        if len(positive_scores):
+            positive_scores = np.concatenate(positive_scores, axis=0)
+        if len(negative_scores):
+            negative_scores = np.concatenate(negative_scores, axis=0)
+
+        if len(image_scores) == 0 and len(positive_scores) == 0:
             return [], []
+        elif len(image_scores) == 0:
+            sort_idx = np.argsort(positive_scores)[::-1]
+            image_scores = np.ones_like(positive_scores)
+        elif len(positive_scores) == 0:
+            sort_idx = np.argsort(image_scores)[::-1]
+            positive_scores = np.ones_like(image_scores)
+        else:
+            sort_idx = np.argsort(image_scores)[::-1]
 
-        scores = np.concatenate(scores, axis=0)
-        topk_idx = np.argsort(scores)[::-1][:topk]
-        topk_infos = [infos[idx] for idx in topk_idx]
-        topk_scores = [float(scores[idx]) for idx in topk_idx]
-        return topk_infos, topk_scores
+        if len(negative_scores) == 0:
+            negative_scores = np.zeros_like(positive_scores)
 
-    def search_nearest_text_image():
-        pass
+        sort_infos, sort_scores = [], []
+        for idx in sort_idx:
+            i_score = float(image_scores[idx])
+            p_score = float(positive_scores[idx])
+            n_score = float(negative_scores[idx])
+            if (
+                i_score < image_threshold
+                or p_score < text_threshold
+                or n_score >= text_threshold
+            ):
+                continue
+            sort_infos.append(infos[idx])
+            sort_scores.append(i_score * p_score)
 
-    def search_nearest_pntext():
-        pass
-
-    def search_nearest_pntext_image():
-        pass
+        return sort_infos[:topk], sort_scores[:topk]
 
     def vis_results(self, infos: List[str], scores: List[float]):
         results = []
@@ -140,10 +186,6 @@ class Demo:
         minimum_height,
         extension,
     ):
-        # TODO:
-        # prompt + image
-        # negative prompt
-
         positive_feature, negative_feature, image_feature = None, None, None
         if len(positive_query) != 0:
             positive_feature = self.model.text_feature(positive_query)
@@ -161,29 +203,15 @@ class Demo:
 
         if positive_feature is None and image_feature is None:
             assert False, "No enough query input."
-
-        elif positive_feature is None:
-            infos, scores = self.search_nearest(image_feature, options=options)
-
-        elif image_feature is None:
-            if negative_feature is None:
-                infos, scores = self.search_nearest(positive_feature, options=options)
-            else:
-                infos, scores = self.search_nearest_pntext(
-                    positive_feature, negative_feature
-                )
-
         else:
-            if negative_feature is None:
-                infos, scores = self.search_nearest_text_image(
-                    positive_feature, image_feature
-                )
-            else:
-                infos, scores = self.search_nearest_pntext_image(
-                    positive_feature, negative_feature, image_feature
-                )
-
-        print(len(infos), len(scores))
+            infos, scores = self.search_nearest(
+                image_feature,
+                positive_feature,
+                negative_feature,
+                options=options,
+                image_threshold=self.config.IMAGE_THRESHOLD,
+                text_threshold=self.config.TEXT_THRESHOLD,
+            )
         return self.vis_results(infos, scores)
 
     def server(self):
@@ -207,7 +235,7 @@ class Demo:
                     info="choose extension for search",
                 )
                 with gr.Row():
-                    topk = gr.Number(value=16, label="topk")
+                    topk = gr.Number(value=32, label="topk")
                     minimum_width = gr.Number(value=0, label="minimum_width")
                     minimun_height = gr.Number(value=0, label="minimum_height")
 
@@ -227,7 +255,7 @@ class Demo:
                 outputs=[gallery],
             )
 
-        demo.launch(server_name=cfg.HOST, server_port=cfg.PORT)
+        demo.launch(server_name=cfg.HOST, server_port=cfg.PORT, debug=True)
 
 
 if __name__ == "__main__":
