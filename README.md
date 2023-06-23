@@ -39,7 +39,7 @@ python3 app.py
   - time-2.7w/1h
 - image-image threshold: 0.6
 - text-image threshold: p-0.22/n-0.18
-- cn text-image threshold: p-0.22/n-0.18
+- cn text-image threshold: p-0.30/n-0.30
 - match: cosine
 
 
@@ -47,6 +47,6 @@ python3 app.py
 - [x] extract images feature(image enter)
 - [x] prompt(positive/negative)/image search
 - [x] positive/negative word-segmentation: use ";" to split prompt(e.g. yellow; person;)
-- [x] chinese: 中文效果没有英文效果好
+- [x] chinese
 - [ ] match algorithm
 <!-- - [ ] OCR/chinese-OCR -->

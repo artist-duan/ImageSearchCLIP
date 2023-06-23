@@ -192,9 +192,9 @@ class Demo:
 
     def is_chinese(self, text):
         for t in text:
-            if not "\u4e00" <= t <= "\u9fa5":
-                return False
-        return True
+            if "\u4e00" <= t <= "\u9fa5":
+                return True
+        return False
 
     def text_feature(self, query, is_cn=False):
         if is_cn:
