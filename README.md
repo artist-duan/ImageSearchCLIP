@@ -7,9 +7,6 @@ refer to [clip-image-search](https://github.com/atarss/clip-image-search.git).
 ```
 pip3 install -r requirements.txt
 ```
-```
-clip: https://github.com/openai/CLIP
-```
 
 ## 1. Extract image feature
 
