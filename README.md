@@ -49,7 +49,7 @@ python3 app.py
 ## 4. TODO
 - [x] extract images feature(image enter)
 - [x] prompt(positive/negative)/image search
-- [x] positive/negative word-segmentation use ";"(e.g. yellow; person;)
+- [x] positive/negative word-segmentation: use ";" to split prompt(e.g. yellow; person;)
 - [x] chinese: 中文效果没有英文效果好
 - [ ] match algorithm
 <!-- - [ ] OCR/chinese-OCR -->
