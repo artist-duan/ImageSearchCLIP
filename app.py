@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 import os
-import time
-import uuid
 import pickle
 import torch
 import logging
@@ -27,7 +25,7 @@ class Demo:
         self.datas = self.get_datas(
             os.path.join(self.config.IMAGE_PATH, self.config.IMAGE_FEATURE_PATH)
         )
-        self.model = get_model(config)
+        self.model, self.cn_model = get_model(config)
 
     @lru_cache(maxsize=1)
     def get_datas(self, path):
@@ -47,15 +45,16 @@ class Demo:
         return paths
 
     def cosine_similarity(self, query_feature, features):
-        logging.info(
-            f"query_feature-{query_feature.shape}, query_feature-{features.shape}."
-        )
         query_feature = query_feature / np.linalg.norm(
             query_feature, axis=1, keepdims=True
         )
         features = features / np.linalg.norm(features, axis=1, keepdims=True)
         scores = query_feature @ features.T
-        return scores[0]
+        logging.info(
+            f"query_feature-{query_feature.shape}, query_feature-{features.shape}, scores-{scores.shape}."
+        )
+        scores = scores.max(axis=0)
+        return scores
 
     def search_nearest(
         self,
@@ -63,8 +62,7 @@ class Demo:
         positive_feature=None,
         negative_feature=None,
         options={},
-        image_threshold=0.6,
-        text_threshold=0.2,
+        is_cn=False,
     ):
         topk = options["topk"]
         minimum_height = options["minimum_height"]
@@ -91,7 +89,10 @@ class Demo:
             if not os.path.exists(info["filename"]):
                 continue
 
-            features.append(info["feature"][0])
+            if is_cn:
+                features.append(info["cn_feature"][0])
+            else:
+                features.append(info["feature"][0])
             infos.append(
                 [
                     info["filename"],
@@ -150,6 +151,19 @@ class Demo:
         if len(negative_scores) == 0:
             negative_scores = np.zeros_like(positive_scores)
 
+        image_threshold = (
+            self.config.CN_IMAGE_THRESHOLD if is_cn else self.config.IMAGE_THRESHOLD
+        )
+        positive_prompt_threshold = (
+            self.config.CN_POSITIVE_PROMPT_THRESHOLD
+            if is_cn
+            else self.config.POSITIVE_PROMPT_THRESHOLD
+        )
+        negative_prompt_threshold = (
+            self.config.CN_NEGATIVE_PROMPT_THRESHOLD
+            if is_cn
+            else self.config.NEGATIVE_PROMPT_THRESHOLD
+        )
         sort_infos, sort_scores = [], []
         for idx in sort_idx:
             i_score = float(image_scores[idx])
@@ -157,8 +171,8 @@ class Demo:
             n_score = float(negative_scores[idx])
             if (
                 i_score < image_threshold
-                or p_score < text_threshold
-                or n_score >= text_threshold
+                or p_score < positive_prompt_threshold
+                or n_score >= negative_prompt_threshold
             ):
                 continue
             sort_infos.append(infos[idx])
@@ -176,6 +190,23 @@ class Demo:
             results.append((filename, s))
         return results
 
+    def is_chinese(self, text):
+        for t in text:
+            if not "\u4e00" <= t <= "\u9fa5":
+                return False
+        return True
+
+    def text_feature(self, query, is_cn=False):
+        if is_cn:
+            query = query.split("；")
+            query = [q.strip() for q in query if len(q.strip())]
+            feature = self.cn_model.text_feature(query)
+        else:
+            query = query.split(";")
+            query = [q.strip() for q in query if len(q.strip())]
+            feature = self.model.text_feature(query)
+        return feature
+
     def search_image(
         self,
         positive_query,
@@ -187,12 +218,25 @@ class Demo:
         extension,
     ):
         positive_feature, negative_feature, image_feature = None, None, None
+
+        is_cn = False
+        if len(positive_query) != 0 and self.is_chinese(positive_query):
+            if len(negative_query) == 0 or self.is_chinese(negative_query):
+                is_cn = True
+            else:
+                assert False, "Keep the same language."
+
         if len(positive_query) != 0:
-            positive_feature = self.model.text_feature(positive_query)
+            positive_feature = self.text_feature(positive_query, is_cn)
+
         if len(negative_query) != 0:
-            negative_feature = self.model.text_feature(negative_query)
+            negative_feature = self.text_feature(negative_query, is_cn)
+
         if isinstance(image_query, Image.Image):
-            image_feature, _ = self.model.image_feature(image_query)
+            if is_cn:
+                image_feature, _ = self.cn_model.image_feature(image_query)
+            else:
+                image_feature, _ = self.model.image_feature(image_query)
 
         options = {
             "topk": int(topk),
@@ -209,8 +253,7 @@ class Demo:
                 positive_feature,
                 negative_feature,
                 options=options,
-                image_threshold=self.config.IMAGE_THRESHOLD,
-                text_threshold=self.config.TEXT_THRESHOLD,
+                is_cn=is_cn,
             )
         return self.vis_results(infos, scores)
 

@@ -24,7 +24,7 @@ def main():
     feature_path = cfg.IMAGE_FEATURE_PATH
 
     """ model """
-    model = get_model(cfg)
+    model, cn_model = get_model(cfg)
 
     """ traverse image path """
     images = traverse_path(root_path, extensions=cfg.IMAGE_EXTENSIONS)
@@ -49,6 +49,10 @@ def main():
         if image_feature is None or image_size is None:
             logging.info(f"skip [{image}], file not exist.")
             continue
+        cn_image_feature, image_size = cn_model.image_feature(image)
+        if cn_image_feature is None or image_size is None:
+            logging.info(f"skip [{image}], file not exist.")
+            continue
 
         # save info
         stat = os.stat(image)
@@ -63,6 +67,7 @@ def main():
             "filesize": stat.st_size,
             "date": image_st_mtime,
             "feature": image_feature,
+            "cn_feature": cn_image_feature,
         }
 
         save_path = os.path.dirname(image).replace(

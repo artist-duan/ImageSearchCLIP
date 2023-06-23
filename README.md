@@ -38,17 +38,18 @@ python3 app.py
 - image feature: 768
 - image enter
   - filename, extension, height, width, filesize, createtime, clipfeature
-  - memory-1.9kB/per(clip feature)
+  - memory-3.5kB/per(clip/cnclip feature)
   - time-2.7w/1h
-- text-image threshold: 0.2
 - image-image threshold: 0.6
+- text-image threshold: p-0.22/n-0.18
+- cn text-image threshold: p-0.22/n-0.18
 - match: cosine
 
 
 ## 4. TODO
 - [x] extract images feature(image enter)
 - [x] prompt(positive/negative)/image search
-- [ ] negative word segmentation
+- [x] positive/negative word-segmentation use ";"(e.g. yellow; person;)
+- [x] chinese: 中文效果没有英文效果好
 - [ ] match algorithm
-- [ ] Chinese
 <!-- - [ ] OCR/chinese-OCR -->

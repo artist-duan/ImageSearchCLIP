@@ -1,0 +1,7 @@
+tqdm
+gradio
+numpy
+torch
+torchvision
+git+https://github.com/openai/CLIP.git
+git+https://github.com/OFA-Sys/Chinese-CLIP.git
