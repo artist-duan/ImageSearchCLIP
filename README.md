@@ -1,14 +1,12 @@
 # ImageSearchCLIP
-image search using CLIP feature.
-
-refer to [clip-image-search](https://github.com/atarss/clip-image-search.git).
+image search using CLIP/Chinese-CLIP feature.
 
 ## 1. Installation
 ```
 pip3 install -r requirements.txt
 ```
 
-## 1. Extract image feature
+## 2. Extract image feature
 
 modify the IMAGE_PATH in [config.py](config.py) and run
 
@@ -16,7 +14,7 @@ modify the IMAGE_PATH in [config.py](config.py) and run
 python3 extract_images_features.py
 ```
 
-## 2. Demo 
+## 3. Demo 
 ```
 python3 app.py
 ```
@@ -31,7 +29,7 @@ python3 app.py
 ![](./statics/image_query.png)
 
 
-## 3. Hyperparameters
+## 4. Hyperparameters
 - image feature: 768
 - image enter
   - filename, extension, height, width, filesize, createtime, clipfeature
@@ -43,7 +41,7 @@ python3 app.py
 - match: cosine
 
 
-## 4. TODO
+## 5. TODO
 - [x] extract images feature(image enter)
 - [x] prompt(positive/negative)/image search
 - [x] positive/negative word-segmentation: use ";" to split prompt(e.g. yellow; person;)
