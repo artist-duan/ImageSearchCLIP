@@ -44,7 +44,7 @@ class Demo:
             return datas
         return paths
 
-    def cosine_similarity(self, query_feature, features):
+    def cosine_similarity(self, query_feature, features, negative=False):
         query_feature = query_feature / np.linalg.norm(
             query_feature, axis=1, keepdims=True
         )
@@ -53,7 +53,10 @@ class Demo:
         logging.info(
             f"query_feature-{query_feature.shape}, query_feature-{features.shape}, scores-{scores.shape}."
         )
-        scores = scores.max(axis=0)
+        if negative:
+            scores = scores.max(axis=0)
+        else:
+            scores = scores.min(axis=0)
         return scores
 
     def search_nearest(
@@ -113,7 +116,7 @@ class Demo:
                     )
                 if negative_feature is not None:
                     negative_scores.append(
-                        self.cosine_similarity(negative_feature, features)
+                        self.cosine_similarity(negative_feature, features, True)
                     )
                 features = []
 
