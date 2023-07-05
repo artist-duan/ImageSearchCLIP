@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import re
 import pickle
 import torch
 import logging
@@ -7,6 +8,7 @@ import numpy as np
 import gradio as gr
 from PIL import Image
 from tqdm import tqdm
+import Levenshtein as lev
 from pympler import asizeof
 from functools import lru_cache
 from typing import List, Tuple, Any
@@ -44,6 +46,31 @@ class Demo:
             return datas
         return paths
 
+    def search_ocr(self, positive_ocr, negative_ocr, image_ocrs):
+        def string_similarity(dst_texts, src_texts):
+            scores = []
+            for dst in dst_texts:
+                score = -1
+                for src in src_texts:
+                    dst, src = dst.lower(), src.lower()
+                    if dst == src or dst in src or src in dst:
+                        score = 1
+                    distance = lev.distance(dst, src)
+                    score = max(score, 1 - distance / max(len(dst), len(src)))
+                scores.append(score)
+            return scores
+
+        if len(image_ocrs) == 0 and len(positive_ocr) == 0:
+            return 0
+        score = 0
+        pos_scores = string_similarity(positive_ocr, image_ocrs)
+        if len(pos_scores) and min(pos_scores) >= self.config.POSITIVE_TEXT_THRESHOLD:
+            score = 1
+        neg_scores = string_similarity(negative_ocr, image_ocrs)
+        if len(neg_scores) and max(neg_scores) >= self.config.NEGATIVE_TEXT_THRESHOLD:
+            score = -1
+        return score
+
     def cosine_similarity(self, query_feature, features, negative=False):
         query_feature = query_feature / np.linalg.norm(
             query_feature, axis=1, keepdims=True
@@ -64,15 +91,19 @@ class Demo:
         image_feature=None,
         positive_feature=None,
         negative_feature=None,
+        positive_ocr=[],
+        negative_ocr=[],
         options={},
         is_cn=False,
     ):
         topk = options["topk"]
-        minimum_height = options["minimum_height"]
-        minimum_width = options["minimum_width"]
+        minimum_height, minimum_width = (
+            options["minimum_height"],
+            options["minimum_width"],
+        )
 
         infos, features = [], []
-        image_scores, positive_scores, negative_scores = [], [], []
+        image_scores, positive_scores, negative_scores, ocr_scores = [], [], [], []
         for info in tqdm(self.datas, total=len(self.datas), desc="matching"):
             if isinstance(info, str):
                 with open(info, "rb") as fr:
@@ -91,6 +122,9 @@ class Demo:
 
             if not os.path.exists(info["filename"]):
                 continue
+
+            ocr_score = self.search_ocr(positive_ocr, negative_ocr, info["ocr"])
+            ocr_scores.append(ocr_score)
 
             if is_cn:
                 features.append(info["cn_feature"][0])
@@ -139,17 +173,40 @@ class Demo:
             positive_scores = np.concatenate(positive_scores, axis=0)
         if len(negative_scores):
             negative_scores = np.concatenate(negative_scores, axis=0)
+        ocr_scores = np.array(ocr_scores, dtype=np.float32)
 
-        if len(image_scores) == 0 and len(positive_scores) == 0:
+        if (
+            len(image_scores) == 0
+            and len(positive_scores) == 0
+            and (ocr_scores == 0).all()
+        ):
             return [], []
-        elif len(image_scores) == 0:
+
+        elif len(image_scores) != 0:
+            sort_idx = np.argsort(image_scores)[::-1]
+            positive_scores = (
+                np.ones_like(image_scores)
+                if len(positive_scores) == 0
+                else positive_scores
+            )
+            ocr_scores = (
+                np.ones_like(image_scores) if (ocr_scores == 0).all() else ocr_scores
+            )
+
+        elif len(positive_scores) != 0:
             sort_idx = np.argsort(positive_scores)[::-1]
             image_scores = np.ones_like(positive_scores)
-        elif len(positive_scores) == 0:
-            sort_idx = np.argsort(image_scores)[::-1]
-            positive_scores = np.ones_like(image_scores)
+            ocr_scores = (
+                np.ones_like(positive_scores) if (ocr_scores == 0).all() else ocr_scores
+            )
+
+        elif not (ocr_scores == 0).all():
+            sort_idx = np.argsort(ocr_scores)[::-1]
+            image_scores = np.ones_like(ocr_scores)
+            positive_scores = np.ones_like(ocr_scores)
+
         else:
-            sort_idx = np.argsort(image_scores)[::-1]
+            pass
 
         if len(negative_scores) == 0:
             negative_scores = np.zeros_like(positive_scores)
@@ -172,14 +229,16 @@ class Demo:
             i_score = float(image_scores[idx])
             p_score = float(positive_scores[idx])
             n_score = float(negative_scores[idx])
+            o_score = float(ocr_scores[idx])
             if (
                 i_score < image_threshold
                 or p_score < positive_prompt_threshold
                 or n_score >= negative_prompt_threshold
+                or o_score != 1
             ):
                 continue
             sort_infos.append(infos[idx])
-            sort_scores.append(i_score * p_score)
+            sort_scores.append(i_score * p_score * o_score)
 
         return sort_infos[:topk], sort_scores[:topk]
 
@@ -199,16 +258,37 @@ class Demo:
                 return True
         return False
 
-    def text_feature(self, query, is_cn=False):
-        if is_cn:
-            query = query.split("；")
-            query = [q.strip() for q in query if len(q.strip())]
-            feature = self.cn_model.text_feature(query)
+    def extract_ocr(self, text):
+        if "<text>" in text:
+            pattern = r"<text>(.*)"
+            match = re.search(pattern, text)
+        elif "<文本>" in text:
+            pattern = r"<文本>(.*)"
+            match = re.search(pattern, text)
         else:
-            query = query.split(";")
-            query = [q.strip() for q in query if len(q.strip())]
-            feature = self.model.text_feature(query)
-        return feature
+            match = None
+
+        if match:
+            return match.group(1)
+        else:
+            return None
+
+    def text_feature(self, query, is_cn=False):
+        querys = query.split("；") if is_cn else query.split(";")
+        ocr_text, query = [], []
+        for q in querys:
+            q = q.strip()
+            if len(q):
+                o = self.extract_ocr(q)
+                if o is None:
+                    query.append(q)
+                else:
+                    ocr_text.append(o)
+        if is_cn:
+            feature = self.cn_model.text_feature(query) if len(query) > 0 else None
+        else:
+            feature = self.model.text_feature(query) if len(query) > 0 else None
+        return feature, ocr_text
 
     def search_image(
         self,
@@ -221,6 +301,7 @@ class Demo:
         extension,
     ):
         positive_feature, negative_feature, image_feature = None, None, None
+        positive_text, negative_text = [], []
 
         is_cn = False
         if len(positive_query) != 0 and self.is_chinese(positive_query):
@@ -230,10 +311,10 @@ class Demo:
                 assert False, "Keep the same language."
 
         if len(positive_query) != 0:
-            positive_feature = self.text_feature(positive_query, is_cn)
+            positive_feature, positive_text = self.text_feature(positive_query, is_cn)
 
         if len(negative_query) != 0:
-            negative_feature = self.text_feature(negative_query, is_cn)
+            negative_feature, negative_text = self.text_feature(negative_query, is_cn)
 
         if isinstance(image_query, Image.Image):
             if is_cn:
@@ -248,13 +329,19 @@ class Demo:
             "extension": extension,
         }
 
-        if positive_feature is None and image_feature is None:
+        if (
+            positive_feature is None
+            and image_feature is None
+            and len(positive_text) == 0
+        ):
             assert False, "No enough query input."
         else:
             infos, scores = self.search_nearest(
                 image_feature,
                 positive_feature,
                 negative_feature,
+                positive_text,
+                negative_text,
                 options=options,
                 is_cn=is_cn,
             )

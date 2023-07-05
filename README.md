@@ -46,5 +46,5 @@ python3 app.py
 - [x] prompt(positive/negative)/image search
 - [x] positive/negative word-segmentation: use ";" to split prompt(e.g. yellow; person;)
 - [x] chinese
-- [ ] match algorithm
-<!-- - [ ] OCR/chinese-OCR -->
+- [x] OCR/chinese-OCR: english-"\<text\>artificial intelligence"; chinese-"<文本>人工智能"
+- [ ] match/ocr-match algorithm

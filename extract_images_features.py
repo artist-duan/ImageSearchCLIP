@@ -9,7 +9,8 @@ from datetime import datetime
 
 from utils import *
 import config as cfg
-from models.clip_model import get_model
+from models.clip_model import get_model as get_clip_model
+from models.ocr_model import get_model as get_ocr_model
 
 
 def main():
@@ -24,7 +25,8 @@ def main():
     feature_path = cfg.IMAGE_FEATURE_PATH
 
     """ model """
-    model, cn_model = get_model(cfg)
+    clip_model, cnclip_model = get_clip_model(cfg)
+    ocr_model = get_ocr_model()
 
     """ traverse image path """
     images = traverse_path(root_path, extensions=cfg.IMAGE_EXTENSIONS)
@@ -45,14 +47,17 @@ def main():
         extension = os.path.splitext(image)[1].lower()[1:]
 
         # extract image feature
-        image_feature, image_size = model.image_feature(image)
+        image_feature, image_size = clip_model.image_feature(image)
         if image_feature is None or image_size is None:
             logging.info(f"skip [{image}], file not exist.")
             continue
-        cn_image_feature, image_size = cn_model.image_feature(image)
+        cn_image_feature, image_size = cnclip_model.image_feature(image)
         if cn_image_feature is None or image_size is None:
             logging.info(f"skip [{image}], file not exist.")
             continue
+
+        # extract ocr
+        texts, boxes, scores = ocr_model.det_ocr(image)
 
         # save info
         stat = os.stat(image)
@@ -68,6 +73,7 @@ def main():
             "date": image_st_mtime,
             "feature": image_feature,
             "cn_feature": cn_image_feature,
+            "ocr": texts,
         }
 
         save_path = os.path.dirname(image).replace(
